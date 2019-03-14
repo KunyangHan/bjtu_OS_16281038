@@ -51,6 +51,7 @@ int myFork(int counter, int step) {
 
 void suiside() {
     int num[2] = {0, 0};
+    int *p = 0x0;
     switch (type) {
     case '1':
         printf("self exit\r\n");
@@ -58,9 +59,7 @@ void suiside() {
         break;
     case '2':
         printf("illegal address accessing\r\n");
-        for (int i = 0; ; i < 10000) {
-            num[0] = num[i];
-        }
+        num[1000] = *p;
         printf("didn't stop\r\n");
         break;
     default:
