@@ -64,7 +64,7 @@ void suiside() {
         printf("didn't stop\r\n");
         break;
     default:
-        printf("others\r\n");
+        // printf("others\r\n");
         break;
     }
 }
