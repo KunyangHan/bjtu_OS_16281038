@@ -86,14 +86,10 @@ int main (){
 ``` c
 #include <unistd.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 int myFork(int, int);
-void suiside();
-char type;
 
 int main (int argc, char *argv[]){
-    type = argv[1][0];
 
     printf("I'm father, my pid : %d\r\n", getpid());
     myFork(1, 2);
@@ -126,8 +122,6 @@ int myFork(int counter, int step) {
                 printf("I'm father, my pid : %d\r\n", getpid());
             }
             else {
-                // printf("pid : %d suiside\r\n", getpid());
-                suiside();
                 printf("Father's pid : %d my pid : %d\r\n", getppid(), getpid());
             }
         }
@@ -136,4 +130,72 @@ int myFork(int counter, int step) {
 }
 ```
 
+编译并运行，利用 pstree 命令得到进程树，可以看到符合题目要求的结构。
+
+![](Screenshot&#32;from&#32;2019-03-14&#32;10-13-07.png)
+
+![](Screenshot&#32;from&#32;2019-03-14&#32;10-14-23.png)
+
+从第一张图片中输出的顺序中可以看出是先执行了父进程的代码，创建了 9556、9557，又执行了子进程的代码，创建了 9558、9559。  
+
 ## 4、修改上述进程树中的进程，使得所有进程都循环输出自己的ID和父进程的ID。然后终止p2进程(分别采用kill -9 、自己正常退出exit()、段错误退出)，观察p1、p3、p4、p5进程的运行状态和其他相关参数有何改变。
+
+代码是在第三题基础上进行了更改，增加了从命令行读取参数的过程，然后编写了根据参数执行 exit、段错误、等待kill等操作的函数，并放在了合适的位置。
+
+``` c
+...
+void suiside();
+char type;
+
+int main (int argc, char *argv[]){
+    type = argv[1][0];
+
+    ...
+    
+    return 0;
+}
+
+int myFork(int counter, int step) {
+    ...
+
+    if (fpid < 0) 
+        ...
+    else if (fpid == 0) {
+        ...
+    }
+    else {
+        ...
+        for (int i = 0; ; i < 1) {
+            ...
+            else {
+                // p2 位置
+                suiside();
+                ...
+            }
+        }
+    }
+    return 0;
+}
+
+void suiside() {
+    int num[2] = {0, 0};
+    switch (type) {
+    case '1':
+        printf("self exit\r\n");
+        exit(0);
+        break;
+    case '2':
+        printf("illegal address accessing\r\n");
+        for (int i = 0; ; i < 10000) {
+            num[0] = num[i];
+        }
+        printf("didn't stop\r\n");
+        break;
+    default:
+        printf("others\r\n");
+        break;
+    }
+}
+```
+
+### kill 终止程序
