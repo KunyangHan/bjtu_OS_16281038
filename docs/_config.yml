@@ -41,7 +41,7 @@ baseurl:            "/bjtu_OS_16281038" # the subpath of your site, e.g. /blog
 
 
 # http://en.wikipedia.org/wiki/List_of_tz_database_time_zones
-timezone:           Asia/Seoul
+timezone:           Asia/Shanghai
 permalink:          /:year-:month-:day/:title/
 
 # Pagination
@@ -85,3 +85,6 @@ gems:
   - jekyll-admin
 
 exclude:            [vendor]
+
+include:
+  - "images"
