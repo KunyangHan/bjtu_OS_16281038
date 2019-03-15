@@ -6,20 +6,20 @@
 name:               "操作系统 实验报告"
 
 author:
-  facebook:         knavit
-  youtubeUser:      knavit
-  youtubeChannel:   knavit
-  twitter:          knavit
+  facebook:         
+  youtubeUser:      
+  youtubeChannel:   
+  twitter:          
   github:           knavit
-  stackoverflow:    knavit
-  quora:            knavit
-  linkedin:         knavit
-  pinterest:        knavit
-  googlePlus:       knavit
-  instagram:        knavit
-  reddit:           knavit
-  medium:           knavit
-  tumblr:           knavit
+  stackoverflow:    
+  quora:            
+  linkedin:         
+  pinterest:        
+  googlePlus:       
+  instagram:        
+  reddit:           
+  medium:           
+  tumblr:           
   email:            knavit@outlook.com
 
 copyright:
@@ -32,7 +32,7 @@ google-analytics:
 
 # Disqus
 disqus:
-  id:               "kiko-plus"
+  id:               ""
 
 # URL
 url:                "https://knavit.github.io" # the base hostname & protocol for your site
