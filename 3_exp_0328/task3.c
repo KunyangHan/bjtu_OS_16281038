@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-volatile int counter = 0;
 sem_t *resource = NULL;
 sem_t *character = NULL;
 char buf[10] = {'1'};

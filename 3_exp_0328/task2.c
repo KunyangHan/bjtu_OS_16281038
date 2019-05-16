@@ -7,13 +7,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-sem_t *writelock = NULL;
+pthread_mutex_t lock; 
 int ticketCount = 1000;
 
 void *sell(void *arg) {
     int sellTime = 800;
     while (sellTime > 0) {
-        sem_wait(writelock);
+        pthread_mutex_lock(&lock);
 
         int temp = ticketCount;
         pthread_yield();
@@ -21,7 +21,7 @@ void *sell(void *arg) {
         pthread_yield();
         ticketCount = temp;
 
-        sem_post(writelock);
+        pthread_mutex_unlock(&lock); 
 
         sellTime -= 1;
     }
@@ -30,7 +30,7 @@ void *sell(void *arg) {
 void *buy(void *arg) {
     int buyTime = 400;
     while (buyTime > 0) {   
-        sem_wait(writelock);
+        pthread_mutex_lock(&lock);
 
         int temp = ticketCount;
         pthread_yield();
@@ -38,7 +38,7 @@ void *buy(void *arg) {
         pthread_yield();
         ticketCount = temp;
 
-        sem_post(writelock);
+        pthread_mutex_unlock(&lock); 
 
         buyTime -= 1;
     }
@@ -46,7 +46,10 @@ void *buy(void *arg) {
 }
 
 int main(int argc, char *argv[]) {
-    writelock = sem_open("ticketLock", O_CREAT, 0666, 2);
+    if (pthread_mutex_init(&lock, NULL) != 0) { 
+        printf("\n mutex init has failed\n"); 
+        return 1;
+    }
 
     pthread_t p1, p2;
     // printf("Initial value : %d\n", counter);
@@ -57,8 +60,7 @@ int main(int argc, char *argv[]) {
 
     printf("ticket remained : %d\n", ticketCount);
 
-    sem_close(writelock);
-    sem_unlink("ticketLock");
+    pthread_mutex_destroy(&lock); 
 
     return 0;
 }
