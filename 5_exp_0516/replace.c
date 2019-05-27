@@ -4,11 +4,11 @@ typdef struct pageitem {
     int block;
 } PAGEITEM;
 
-typdef struct table {
+struct table {
     PAGEITEM item[31];
     int findPage(int);
     int replacePage(int, int);
-} TABLE;
+}
 
 int table::findPage(int page) {
     int block = -1;
