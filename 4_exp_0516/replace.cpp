@@ -162,17 +162,14 @@ Clock::Clock() {
 
 void Clock::run(int len, int v[]) {
     for (int i = 0; i < len; i++) {
-        int index = table.findPage(v[i]);
-        if (index != -1) {
+        if (table.findPage(v[i]) != -1) {
             log.correct();
-            table.item[index].modi = ((v[i] + i) % 3 == 0 ? 1 : 0);
             continue;
         }
         int block = find();
-
-        visit[block] = 1;
+        visit[i] = 1;
         table.replacePage(block, v[i]);
-        table.item[block].modi = ((v[i] + i) % 3 == 0 ? 1 : 0);
+        table.item[i].modi = (v[i] % 3 == 0 ? 1 : 0);
         log.wrong();
     }
 
@@ -207,10 +204,9 @@ endp:
 
 int Clock::findFir() {
     int block = -1;
-    for (int i = 0; i < BLOCK_NUM; i++) {
+    for (int i = 0; i < BLOCK_NUM; next()) {
         if (table.item[ptr].modi == 0 && visit[ptr] == 0) {
             block = ptr;
-            next();
             break;
         }
     }
@@ -219,13 +215,98 @@ int Clock::findFir() {
 
 int Clock::findSec() {
     int block = -1;
-    for (int i = 0; i < BLOCK_NUM; i++) {
+    for (int i = 0; i < BLOCK_NUM; next()) {
         if (table.item[ptr].modi == 1 && visit[ptr] == 0) {
             block = ptr;
-            next();
             break;
         }
         visit[ptr] = 0;
     }
     return block;
+}
+
+PBA::PBA() {
+    for (int i = 0; i < CHAIN_LEN; i++) {
+        visited[i] = 0;
+    }
+    for (int i = 0; i < TABLE_LEN; i++) {
+        timeLine[i] = 0;
+    }
+}
+
+void PBA::run(int len, int v[]) {
+    for (int i = 0; i < len; i++) {
+        int index = table.findPage(v[i]);
+        if (index != -1 && index < TABLE_LEN) {
+            log.correct();
+            continue;
+        }
+        else if (findInChain(v[i]) != -1) {
+            log.correct();
+            continue;
+        }
+        int block = find();
+
+        addToChain(block);
+        table.replacePage(block, v[i]);
+        timeLine[block] = i;
+        table.item[i].modi = (v[i] % 3 == 0 ? 1 : 0);
+        log.wrong();
+    }
+
+    printf("LRU : %lf\n", log.getFaultRate());
+}
+
+int PBA::find() {
+    int min = 0;
+    int block = 0;
+
+    for (int j = 0; j < BLOCK_NUM; j++) {
+        if (table.item[j].exist == 0) {
+            block = j;
+            break;
+        }
+        if (timeLine[j] < min) {
+            min = timeLine[j];
+            block = j;
+        }
+    }
+
+    return block;
+}
+
+int PBA::findInChain(int page) {
+    int index = -1;
+    for (int i = 0; i < CHAIN_LEN; i++) {
+        if (visited[i] == page) {
+            int block = find();
+            deleteChain(i);
+            addToChain(table.item[block].page);
+            table.replacePage(block, page);
+
+            index = i;
+            break;
+        }
+    }
+    return index;
+}
+
+void PBA::addToChain(int page) {
+    int full = 1;
+    for (int i = 0; i < CHAIN_LEN; i++) {
+        if (visited[i] == -1) {
+            visited[i] = -1;
+            full = 0;
+        }
+    }
+    if (full == 1) {
+        for (int i = 0; i < CHAIN_LEN; i++) {
+            visited[i] = 0;
+        }
+        visited[0] = page;
+    }
+}
+
+void PBA::deleteChain(int i) {
+    visited[i] = 0;
 }

@@ -1,6 +1,8 @@
 #pragma once
 
 #define BLOCK_NUM 31
+#define CHAIN_LEN 4
+#define TABLE_LEN BLOCK_NUM - CHAIN_LEN
 
 struct Pageitem {
     int page;
@@ -62,5 +64,14 @@ struct Clock {
 };
 
 struct PBA {
-
+    Table table;
+    Log log;
+    int timeLine[TABLE_LEN];
+    int visited[CHAIN_LEN];
+    PBA();
+    void run(int, int[]);
+    int find();
+    int findInChain(int);
+    void addToChain(int);
+    void deleteChain(int);
 };
