@@ -162,14 +162,17 @@ Clock::Clock() {
 
 void Clock::run(int len, int v[]) {
     for (int i = 0; i < len; i++) {
-        if (table.findPage(v[i]) != -1) {
+        int index = table.findPage(v[i]);
+        if (index != -1) {
             log.correct();
+            table.item[index].modi = ((v[i] + i) % 3 == 0 ? 1 : 0);
             continue;
         }
         int block = find();
-        visit[i] = 1;
+
+        visit[block] = 1;
         table.replacePage(block, v[i]);
-        table.item[i].modi = (v[i] % 3 == 0 ? 1 : 0);
+        table.item[block].modi = ((v[i] + i) % 3 == 0 ? 1 : 0);
         log.wrong();
     }
 
@@ -204,9 +207,10 @@ endp:
 
 int Clock::findFir() {
     int block = -1;
-    for (int i = 0; i < BLOCK_NUM; next()) {
+    for (int i = 0; i < BLOCK_NUM; i++) {
         if (table.item[ptr].modi == 0 && visit[ptr] == 0) {
             block = ptr;
+            next();
             break;
         }
     }
@@ -215,9 +219,10 @@ int Clock::findFir() {
 
 int Clock::findSec() {
     int block = -1;
-    for (int i = 0; i < BLOCK_NUM; next()) {
+    for (int i = 0; i < BLOCK_NUM; i++) {
         if (table.item[ptr].modi == 1 && visit[ptr] == 0) {
             block = ptr;
+            next();
             break;
         }
         visit[ptr] = 0;
