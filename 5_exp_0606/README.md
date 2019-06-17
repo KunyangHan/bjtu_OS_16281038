@@ -1,0 +1,610 @@
+# 实验五 文件系统
+
+## 韩坤洋 16281038
+
+# IO系统
+
+## 扇区
+
+扇区的大小固定为512B，因为访问的时候是以扇区为最小单位进行的，所以这里为了强化这一概念，单独设立一个扇区结构。
+
+```c
+struct BLOCK {
+    char content[512];
+};
+```
+
+## 磁盘模型
+
+同实验报告中所述，使用数组作为磁盘的表示，其中磁头数量、柱面数等是自己定义的：
+
+```c
+    const static int C = 50;
+    const static int H = 2;
+    const static int B = 10;
+    const static int SIZE = 512;
+
+    BLOCK ldisk[C][H][B];
+```
+
+那么这里就涉及了逻辑块的访问和真实扇区CHB表示的转化。定逻辑访问以 l 为代表，CHB取 chb。
+
+```c
+void IO::l2chb(int l, int *a) {
+    int a[3] = {0};
+    a[0] = l % B;
+    a[0] = (l - B) % (H * B);
+    a[1] = (l - a[0] * H * B) % B;
+    a[2] = l - a[0] * H * B - a[1] * B;
+}
+
+int IO::chb2l(int c, int h, int b) {
+    return b + b * h + b * h * c;
+}
+```
+
+## 块操作接口
+
+其实就是对于某一特定块的读入\覆写，通过逻辑块号转chb表示的块号，然后利用字符串操作函数即可以完成。
+
+```c
+void IO::readBlock(int l, char *ch) {
+    int a[3];
+    l2chb(l, a);
+
+    strcpy(ch, ldisk[a[0]][a[1]][a[2]].content);
+}
+
+void IO::writeBlock(int l, char *ch) {
+    int a[3];
+    l2chb(l, a);
+
+    strcpy(ldisk[a[0]][a[1]][a[2]].content, ch);
+}
+```
+
+## 文件备份
+
+为了方便测试，还了实现另外两个函数： 一个用来把数组 ldisk 存储到文件；另一个用来把文件内容恢复到数组 ldisk。
+
+```c
+void IO::disk2File(char name[]) {
+    FILE *fp;
+    fp = fopen(name, "wb");
+
+    if (fp == NULL) {
+        printf("File Open Fail");
+        exit(1);
+    }
+
+    for (int i = 0; i < C; i++) {
+        for (int j = 0; j < H; j++) {
+            for (int k = 0; k < B; k++) {
+                fwrite(ldisk[i][j][k].content, 512, 1, fp);
+            }
+        }
+    }
+
+    fclose(fp);
+}
+
+void IO::file2Disk(char name[]) {
+    FILE *fp;
+    fp = fopen(name, "rb");
+    if (fp == NULL) {
+        printf("File Open Fail");
+        exit(1);
+    }
+
+    int ind = 0;
+    while (!feof(fp)) {
+        int a[3];
+        l2chb(ind, a);
+        BLOCK *tmp = &ldisk[a[0]][a[1]][a[2]];
+
+        fread(tmp->content, 512, 1, fp);
+
+        ind++;
+    }
+    fclose(fp);
+}
+```
+
+# 文件系统
+
+## 位图
+
+位图本身直接占用了前两个扇区进行实现，因此不需要额外的结构去表示位图。关于位图有三个函数操作，分别是将某一块对应的位图置任意值，和找到一块空闲的扇区并返回逻辑编号。最后一个负责初始化位图数据，置字符0（未被使用）。
+
+```c
+void IO::setBitmap(int l, char ch) {
+    int b = l / 512;
+    int ind = l % 512;
+    ldisk[0][0][b].content[ind] = ch;
+}
+
+int IO::getFree() {
+    int result = -1;
+    for (int i = 14; i < C * H * B; i++) {
+        if (ldisk[0][0][i / 512].content[i % 512] == '0') {
+            result = i;
+            break;
+        }
+    }
+
+    return result;
+}
+
+void IO::initBitmap() {
+    setBitmap(0, '1');
+    setBitmap(1, '1');
+    for (int i = 0; i < C*H*B; i++) {
+        setBitmap(i, '0');
+    }
+}
+
+```
+
+## 目录项目
+目录包含文件系统中的所有文件，而目录由目录文件组成，其包括了文件名和文件描述符序号。在这里认为规定文件名最大长度为12。
+
+```c
+struct MenuItem {
+    char file_name[12]; 
+    int des_num;
+
+    void setVar(char [], int);
+};
+```
+setVar 函数同样是为了赋值方便而定义的函数。  
+同样创建一个文件时也需要寻找一个空闲的目录项目，所以定义函数如下：
+```c
+int FileSys::getFreeMenu() {
+    int result = -1;
+
+    for (int i = 0; i < 256; i++) {
+        if (strlen(menu_item[i].file_name) == 0) {
+            result = i;
+            break;
+        }
+    }
+    return result;
+}
+```
+
+还有在系统最初运行时进行初始化的函数：
+```c
+void FileSys::initMenu() {
+    for (int i = 0; i < 32; i++) {
+        menu_item[i].des_num = i;
+    }
+}
+```
+
+## 文件描述符
+
+文件描述符是为了记录一个文件的基本信息：它的长度、所在的磁盘块号。除了文件信息还有自身是否被占用、自身编号。
+
+```c
+struct Descriptor {
+    int file_len;
+    int disk_num[3];
+    int des_num;
+    char is_free;
+
+    void setVar(int, int[], int, char);
+};
+```
+
+上面的 setVar 函数是为了赋值方面而设置的。下面介绍在文件系统中定义的函数。  
+寻找空闲的文件描述符。  
+```c
+int FileSys::getFreeDes() {
+    int result = -1;
+
+    for (int i = 0; i < 256; i++) {
+        if (descriptor[i].is_free == '0') {
+            result = i;
+            break;
+        }
+    }
+    return result;
+}
+```
+
+还有在系统最初运行时进行初始化的函数：
+```c
+void FileSys::initDescriptor() {
+    for (int i = 0; i < 256; i++) {
+        int  dn[3] = {i, -1, -1};
+ 
+        setDescriptor(i, 0, dn, i, '0');
+    }
+
+    descriptor[0].is_free = '1';
+    descriptor2Disk();
+}
+```
+
+为了统一内存中文件描述符和模拟的磁盘上的文件描述符，定义了互相转移值的函数。但是实际上两个函数被调用的次数很少，基本上在文件储存的时候才会使用。
+
+```c
+void FileSys::descriptor2Disk() {
+    char temp_block[512];
+    int disk_num = 2;
+    int ind = 0;
+
+    for (int i = 0; i < 256; i++, ind++) {
+        char temp_descriptor[24];
+        memcpy(temp_descriptor, &descriptor[i], sizeof(descriptor));
+        memcpy(&temp_block[ind * 24], temp_descriptor, 24);
+
+        if (i % 21 == 0) {
+            ind = 0;
+
+            writeBlock(chb2l(0, disk_num / B, disk_num % B), temp_block);
+            disk_num++;
+        }
+    }
+}
+
+void FileSys::disk2Descriptor() {
+    for (int i = 2; i < 15; i++) {
+        char temp_block[512];
+
+        readBlock(chb2l(0, i / B, i % B), temp_block);
+
+        for (int j = 0; j < 21; j++) {
+            if (((i - 2) * 21 + j) > 256)
+                break;
+
+            char temp_FileDescriptor[24];
+            memcpy(temp_FileDescriptor, &temp_block[j * 24], 24);
+            Descriptor *f = (Descriptor *)temp_FileDescriptor;
+
+            setDescriptor((i - 2) * 21 + j, f->file_len, f->disk_num, f->des_num, f->is_free);
+        }
+    }
+}
+```
+
+## 用户交互接口
+
+### 创建
+
+create 函数负责根据指定的文件名创建新的文件，主要操作其实是寻找空闲的目录项目、文件描述符、盘块，然后进行相应的注册得到一个新的文件。  
+但是这样操作之后只能得到一个分配了一个空闲块的空文件，可以通过文件名找到该文件。
+
+```c
+void FileSys::create(char name[]) {
+    int des, menu, disk;
+
+    menu = getFreeMenu();
+    des = getFreeDes();
+    disk = getFree();
+
+    descriptor[des].disk_num[0] = disk;
+    menu_item[menu].setVar(name, des);
+    descriptor[des].is_free = '1';
+
+    setBitmap(disk, '1');
+}
+```
+
+### 删除
+
+destroy 函数负责按照文件名寻找并删除指定文件。函数首先会遍历目录寻找文件对应的文件描述符，然后通过文件描述符得到所占用的盘块的逻辑号。接下来将对应块号对应位图置为未使用标识，置文件描述符为未使用，最后删除目录项目就好了。
+
+```c
+void FileSys::destroy(char name[]) {
+    int menu = -1;
+    for (int i = 0; i < 32; i++) {
+        if (strcmp(menu_item[i].file_name, name) == 0) {
+            menu = i;
+            break;
+        }
+    }
+    if (menu == -1) {
+        printf("didnt find file %s��\n", name);
+    }
+    else {
+        int des = menu_item[menu].des_num;
+
+        memset(menu_item[menu].file_name, 0, sizeof(menu_item[menu].file_name));
+
+        descriptor[des].is_free = '0';
+        for (int i = 0; i < 3; i++) {
+            if (descriptor[des].disk_num[i] != -1) {
+                setBitmap(descriptor[des].disk_num[i], '0');
+            }
+        }
+    }
+}
+```
+
+可以看到如果未找到文件，则不执行任何操作。
+
+### 打开
+
+open 函数负责根据文件名打开指定文件，这里的打开与平时理解的打开不太一样。并不是平时使用系统那种，打开之后就可以看到内容，而是寻找一个文件对应的文件描述符编号。
+
+``` c
+int FileSys::open(char name[]) {
+    int menu = -1;
+    int result = -1;
+    for (int i = 0; i < 32; i++) {
+        if (strcmp(menu_item[i].file_name, name) == 0) {
+            menu = i;
+            break;
+        }
+    }
+    if (menu == -1) {
+        printf("didnt find file %s��\n", name);
+    } 
+    else {
+        result = menu_item[menu].des_num;
+    }
+
+    return result;
+}
+```
+
+### 读取
+
+read 函数从指定文件顺序读入 count 个字节 mem_area 指定的内存位置。  
+函数说明十分清楚，但是实现起来有一些需要特别注意的点：
+1.  读的内容可能不止储存在一个块里面，所以读块时要分多次进行读入
+2.  通过 lseek 函数可以设定一个文件的起始指针，所以读的时候还需要注意偏移值
+
+```c
+void FileSys::read(int index, char * mem_area, int count) {
+    char block[512];
+    int ind = -1;
+    int ptr = 0;
+    int pos = pos_table[index];
+
+    while (count > 0 && descriptor[index].disk_num[ind] != -1)    {
+        ind += 1;
+        int size = count > 512 ? 512 : count;
+        count -= 512;
+
+        readBlock(descriptor[index].disk_num[ind], block);
+        memcpy(mem_area + ptr, block + pos, size);
+
+        ptr += size;
+        pos = 0;
+    }
+}
+```
+
+### 写入
+
+write 把 mem_area 指定的内存位置开始的 count 个字节顺序写入指定文件。  
+函数说明十分清楚，但是实现起来有一些需要特别注意的点：
+1.  写的内容可能一个块里面放不下，所以读块时要分多次进行写入
+2.  在对下一盘块进行写入时，要判断文件原本是否有更多的盘块。
+3.  通过 lseek 函数可以设定一个文件的起始指针，所以写的时候还需要注意偏移值
+
+```c
+void FileSys::write(int index, char * mem_area, int count) {
+    int pos = pos_table[index];
+    int ind = pos / 512;
+    int ptr = 0;
+    char content[512];
+    while (count > 0) {
+        int size = count > (512 - pos) ? (512 - pos) : count;
+        int block_num = descriptor[index].disk_num[ind];
+
+        if (block_num == -1) {
+            int disk = getFree();
+
+            descriptor[index].disk_num[0] = disk;
+            descriptor[index].is_free = '1';
+
+            setBitmap(disk, '1');
+        }
+        readBlock(block_num, content);
+        memcpy(content, (mem_area + ptr), size);
+        writeBlock(block_num, content);
+
+        pos = 0;
+        ind += 1;
+        ptr += size;
+    }
+}
+```
+
+### 偏移设定
+
+lseek 把文件的读写指针移动到pos指定的位置。pos是一个整数，表示从文件开始位置的偏移量。
+
+```c
+void FileSys::lseek(int index, int p) {
+    pos_table[index] = p;
+}
+```
+
+### 显示文件
+
+directory 列表显示所有文件及其长度。遍历就完了。
+
+```c
+void FileSys::directory() {
+    int count = 0;
+
+    printf("here files are:\n");
+    for (int i = 0; i < 32; i++) {
+        if (strlen(menu_item[i].file_name) != 0) {
+            cout << "index\tfilename\t\tlength" << endl;
+            cout << i + 1 << "\t" << menu_item[i].file_name << "\t";
+            cout << descriptor[menu_item[i].des_num].file_len << endl;
+            count++;
+        }
+    }
+    cout << "totally " << count << " files found" << endl;
+}
+```
+
+# 菜单
+
+菜单就是 while 循环接受输入，进行判断。  
+需要讲的就是修改文件部分，因为修改设计到了文件的打开、文件的写入、指针的更改，还需要输入修改的长度以及修改后的文字，因此是整个处理里面最长的一个。
+
+``` c
+void menu(FileSys *fs) {
+    bool exit = false;
+    while (!exit) {
+        int num;
+        char name[12];
+        char content[1536];
+        cout << "1. 查看目录\t2. 打开文件" << endl;
+        cout << "3. 创建文件\t4. 修改文件" << endl;
+        cout << "5. 删除文件\t6. 保存至磁盘" << endl;
+        cout << "7. 从磁盘恢复" << endl;
+        cout << "其它. 退出" << endl;
+        cin >> num;
+
+        switch (num) {
+        case 1:
+            fs->directory();
+            break;
+        case 2:
+            getFileName(name);
+            fs->read(fs->open(name), content, 1536);
+            cout << content << endl;
+            break;
+        case 3:
+            getFileName(name);
+            fs->create(name);
+            break;
+        case 4:
+            int pos = 0;
+            int len = 0;
+            int index;
+            getFileName(name);
+            cout << "input where you want to start modify" << endl;
+            cin >> pos;
+            cout << "input the legth you wnat to modify" << endl;
+            cin >> len;
+            cout << "input modify text" << endl;
+            scanf("%s", content);
+            index = fs->open(name);
+            fs->lseek(index, pos);
+            fs->write(index, content, len);
+            break;
+        case 5:
+            getFileName(name);
+            fs->destroy(name);
+            break;
+        case 6:
+            getFileName(name);
+            fs->file2Disk(name);
+            break;
+        case 7:
+            getFileName(name);
+            fs->disk2File(name);
+            break;
+        default:
+            exit = true;
+            break;
+        }
+    }
+}
+```
+
+# 操作记录
+
+进入界面
+>1.index     2. open	3. create       
+>4.modify 	5. delete     6. save  
+>7.recover  
+>other. exit  
+
+查看目录  
+
+>1  
+>here files are:  
+>index	filename	length   
+>totally 0 files found  
+
+创建文件
+
+>1.index     2. open	3. create       
+>4.modify 	5. delete     6. save  
+>7.recover  
+>other. exit  
+>3  
+>input a filename within 12 characters  
+>test  
+
+创建文件
+
+>1.index     2. open	3. create       
+>4.modify 	5. delete     6. save  
+>7.recover  
+>other. exit  
+>3  
+>input a filename within 12 characters  
+>toDel  
+
+修改文件
+
+>1.index     2. open	3. create       
+>4.modify 	5. delete     6. save  
+>7.recover  
+>other. exit  
+>4  
+>input a filename within 12 characters  
+>test  
+>input where you want to start modify  
+>0  
+>input the legth you wnat to modify  
+>5  
+>input modify text  
+>hello  
+
+查看目录
+
+>1.index     2. open	3. create       
+>4.modify 	5. delete     6. save  
+>7.recover  
+>other. exit  
+>1  
+>here files are:  
+>index	filename	length  
+>1	test		5  
+>2	toDel		0  
+>totally 2 files found  
+
+删除文件
+
+>1.index     2. open	3. create       
+>4.modify 	5. delete     6. save  
+>7.recover  
+>other. exit  
+>5  
+>input a filename within 12 characters  
+>toDel  
+
+查看目录
+
+>1.index     2. open	3. create       
+>4.modify 	5. delete     6. save  
+>7.recover  
+>other. exit  
+>1  
+>here files are:  
+>index	filename	length  
+>1	test		5  
+>totally 1 files found  
+
+查看文件
+
+>1.index     2. open	3. create       
+>4.modify 	5. delete     6. save  
+>7.recover  
+>other. exit  
+>5  
+>input a filename within 12 characters  
+>test  
+>hello
